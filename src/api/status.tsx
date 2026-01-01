@@ -1,7 +1,8 @@
-import { createSignal, onMount, onCleanup } from 'solid-js';
+import { createSignal, onMount, onCleanup } from "solid-js";
+import { fetchDonations } from "../pages/support";
 
 export interface PresenceData {
-  discord_status: 'online' | 'idle' | 'dnd' | 'offline';
+  discord_status: "online" | "idle" | "dnd" | "offline";
   track_name: string;
   artist_name: string;
   music_image: string;
@@ -18,14 +19,14 @@ export interface Toast {
   title: string;
   message: string;
   image?: string;
-  type: 'music' | 'game' | 'status' | 'donation'; 
+  type: "music" | "game" | "status" | "donation";
 }
 
 const [status, setStatus] = createSignal<PresenceData>({
-  discord_status: 'offline',
-  track_name: 'Nothing playing',
-  artist_name: '---',
-  music_image: '',
+  discord_status: "offline",
+  track_name: "Nothing playing",
+  artist_name: "---",
+  music_image: "",
   is_listening: false,
   music_start: null,
   game_name: null,
@@ -37,21 +38,23 @@ const [status, setStatus] = createSignal<PresenceData>({
 const [toasts, setToasts] = createSignal<Toast[]>([]);
 const [lastDonationId, setLastDonationId] = createSignal<string | null>(null);
 
-export const addToast = (toast: Omit<Toast, 'id'>) => {
+export const addToast = (toast: Omit<Toast, "id">) => {
   const id = Date.now();
   setToasts((prev) => [...prev, { ...toast, id }]);
   setTimeout(() => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, 5000); 
+  }, 5000);
 };
 
 export const useStatus = () => {
   onMount(() => {
     let socket: WebSocket;
-    let isFirstPresenceLoad = true; 
+    let isFirstPresenceLoad = true;
 
     const connect = () => {
-      socket = new WebSocket('wss://supertiger.nerimity.com/trackdispresence/1369228144325824593');
+      socket = new WebSocket(
+        "wss://supertiger.nerimity.com/trackdispresence/1369228144325824593"
+      );
 
       socket.onmessage = (event) => {
         try {
@@ -63,29 +66,33 @@ export const useStatus = () => {
           const current = status();
 
           if (!isFirstPresenceLoad) {
-            if (music && music.details !== current.track_name && current.track_name !== 'Nothing playing') {
+            if (
+              music &&
+              music.details !== current.track_name &&
+              current.track_name !== "Nothing playing"
+            ) {
               addToast({
-                title: 'Now Playing',
+                title: "Now Playing",
                 message: `${music.details} — ${music.state}`,
                 image: music.assets?.largeImageUrl,
-                type: 'music'
+                type: "music",
               });
             }
 
             if (game && game.name !== current.game_name) {
               addToast({
-                title: 'Started Playing',
+                title: "Started Playing",
                 message: game.name,
                 image: game.assets?.largeImageUrl,
-                type: 'game'
+                type: "game",
               });
             }
           }
           setStatus({
-            discord_status: raw.status || 'offline',
-            track_name: music?.details || 'Nothing playing',
-            artist_name: music?.state || '---',
-            music_image: music?.assets?.largeImageUrl || '',
+            discord_status: raw.status || "offline",
+            track_name: music?.details || "Nothing playing",
+            artist_name: music?.state || "---",
+            music_image: music?.assets?.largeImageUrl || "",
             is_listening: !!music,
             music_start: music?.timestamps?.start || null,
             game_name: game?.name || null,
@@ -100,7 +107,7 @@ export const useStatus = () => {
       };
 
       socket.onclose = () => {
-        isFirstPresenceLoad = true; 
+        isFirstPresenceLoad = true;
         setTimeout(connect, 5000);
       };
     };
@@ -108,35 +115,31 @@ export const useStatus = () => {
     connect();
 
     const checkDonations = async () => {
-      try {
-        const response = await fetch("https://api.asraye.com/api/donations");
-        if (!response.ok) return;
-        const data = await response.json();
+      const data = await fetchDonations();
+      if (!data) return;
 
-        if (data?.donations?.length > 0) {
-          const latest = data.donations[0];
-          
-          if (!lastDonationId()) {
-            setLastDonationId(latest.id);
-            return;
-          }
+      if (data?.donations?.length > 0) {
+        const latest = data.donations[0];
+        const id = latest.createdAt;
 
-          if (latest.id !== lastDonationId()) {
-            setLastDonationId(latest.id);
-            addToast({
-              title: 'New Supporter',
-              message: `${latest.username || "Anonymous"} just donated!`,
-              type: 'donation'
-            });
-          }
+        if (!lastDonationId()) {
+          setLastDonationId(id);
+          return;
         }
-      } catch (e) {
-        console.error("Donation Poll Error:", e);
+
+        if (id !== lastDonationId()) {
+          setLastDonationId(id);
+          addToast({
+            title: "New Supporter",
+            message: `${latest.username || "Anonymous"} just donated!`,
+            type: "donation",
+          });
+        }
       }
     };
 
-    const pollInterval = setInterval(checkDonations, 30000); 
-    checkDonations(); 
+    const pollInterval = setInterval(checkDonations, 30000);
+    checkDonations();
 
     onCleanup(() => {
       if (socket) socket.close();
